@@ -73,7 +73,7 @@ class LogMelFilterBanks(nn.Module):
             input=x,
             n_fft=self.n_fft, 
             hop_length=self.hop_length,
-            win_lenght=self.window_length,
+            win_length=self.window_length,
             window=self.window,
             center=self.center,
             pad_mode=self.pad_mode,
@@ -92,7 +92,7 @@ class LogMelFilterBanks(nn.Module):
         """
         stft_result = self.spectrogram(x)
         power_spect = torch.abs(stft_result) ** self.power
-        emel = torch.matmul(self.mel_fbanks, power_spect)
-        result = torch.log(emel)
-        # Return log mel filterbanks matrix
+        power_spect = power_spect.transpose(1, 2)
+        emel = torch.matmul(power_spect, self.mel_fbanks)
+        result = torch.log(emel + 1e-6).transpose(1, 2)
         return result
