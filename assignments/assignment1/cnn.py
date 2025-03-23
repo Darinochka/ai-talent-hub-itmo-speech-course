@@ -51,16 +51,16 @@ class BinarySpeechCommands(Dataset):
         return waveform, label
 
 class CNN(nn.Module):
-    def __init__(self, n_classes=2):
+    def __init__(self, n_mels: int = 80, n_classes: int = 2, groups: int = 1):
         super(CNN, self).__init__()
         self.layers = nn.Sequential(
-            nn.Conv1d(in_channels=80, out_channels=32, kernel_size=3, padding=1),
+            nn.Conv1d(in_channels=n_mels, out_channels=32, kernel_size=3, padding=1, groups=groups),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2),
-            nn.Conv1d(in_channels=32, out_channels=16, kernel_size=3, padding=1),
+            nn.Conv1d(in_channels=32, out_channels=16, kernel_size=3, padding=1, groups=groups),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2),
-            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3, padding=1),
+            nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3, padding=1, groups=groups),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2)
         )
@@ -77,11 +77,11 @@ class CNN(nn.Module):
         return x
 
 class SpeechCommandBinaryClassifier(pl.LightningModule):
-    def __init__(self, lr=1e-3):
+    def __init__(self, n_mels: int = 80, lr: float = 1e-3):
         super(SpeechCommandBinaryClassifier, self).__init__()
         self.save_hyperparameters()
-        self.feature_extractor = LogMelFilterBanks()
-        self.cnn = CNN(n_classes=2)
+        self.feature_extractor = LogMelFilterBanks(n_mels=n_mels)
+        self.cnn = CNN(n_mels=n_mels, n_classes=2)
         self.criterion = nn.CrossEntropyLoss()
         self.train_epoch_start_time = None
         self.lr = lr
@@ -98,10 +98,10 @@ class SpeechCommandBinaryClassifier(pl.LightningModule):
         self.log("train_loss", loss, on_step=False, on_epoch=True)
         return loss
 
-    def training_epoch_start(self):
+    def on_train_epoch_start(self):
         self.train_epoch_start_time = time.time()
 
-    def on_training_epoch_end(self, outputs):
+    def on_train_epoch_end(self):
         epoch_time = time.time() - self.train_epoch_start_time
         self.log("epoch_time", epoch_time)
 
@@ -121,6 +121,7 @@ class SpeechCommandBinaryClassifier(pl.LightningModule):
         preds = torch.argmax(logits, dim=1)
         acc = (preds == label).float().mean()
         self.log("test_acc", acc)
+        self.compute_flops()
         return acc
 
     def configure_optimizers(self):
@@ -134,9 +135,14 @@ class SpeechCommandBinaryClassifier(pl.LightningModule):
         flops = macs * 2
 
         print("CNN FLOPs: %s   MACs: %s   Params: %s \n" %(flops, macs, params))
+        self.log_dict(
+            {
+                "flops": flops,
+                "macs": macs,
+                "params": params
+            }
+        )
 
-        return flops, macs, params
-        
 
 def collate_fn(batch):
     waveforms, labels = zip(*batch)
