@@ -77,11 +77,11 @@ class CNN(nn.Module):
         return x
 
 class SpeechCommandBinaryClassifier(pl.LightningModule):
-    def __init__(self, n_mels: int = 80, lr: float = 1e-3):
+    def __init__(self, n_mels: int = 80, lr: float = 1e-3, groups: int = 1):
         super(SpeechCommandBinaryClassifier, self).__init__()
         self.save_hyperparameters()
         self.feature_extractor = LogMelFilterBanks(n_mels=n_mels)
-        self.cnn = CNN(n_mels=n_mels, n_classes=2)
+        self.cnn = CNN(n_mels=n_mels, n_classes=2, groups=groups)
         self.criterion = nn.CrossEntropyLoss()
         self.train_epoch_start_time = None
         self.lr = lr
