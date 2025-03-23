@@ -1,0 +1,5 @@
+__pycache__
+data
+lightning_logs
+wandb
+Speech_homework

@@ -32,12 +32,22 @@ class LogMelFilterBanks(nn.Module):
         # Do correct initialization of stft params below:
         # hop_length, n_mels, center, return_complex, onesided, normalize_stft, pad_mode, power
         # ...
-        # <YOUR CODE GOES HERE>
+        self.hop_length = hop_length
+        self.n_mels = n_mels
+        self.pad_mode = pad_mode
+        self.power = power
+        self.normalize_stft = normalize_stft
+        self.onesided = onesided
+        self.center = center
+        self.return_complex = return_complex
 
         # Do correct initialization of mel fbanks params below:
         # f_min_hz, f_max_hz, norm_mel, mel_scale
         # ...
-        # <YOUR CODE GOES HERE>
+        self.f_min_hz = f_min_hz if f_min_hz is not None else 0.0
+        self.f_max_hz = f_max_hz if f_max_hz is not None else samplerate / 2
+        self.norm_mel = norm_mel
+        self.mel_scale = mel_scale
 
         # finish parameters initialization
         self.mel_fbanks = self._init_melscale_fbanks()
@@ -47,14 +57,29 @@ class LogMelFilterBanks(nn.Module):
         return F.melscale_fbanks(
             # Turns a normal STFT into a mel frequency STFT with triangular filter banks
             # make a full and correct function call
-            # <YOUR CODE GOES HERE>
+            self.n_fft // 2 + 1,
+            self.f_min_hz,
+            self.f_max_hz,
+            self.n_mels,
+            self.samplerate,
+            self.norm_mel,
+            self.mel_scale
         )
 
     def spectrogram(self, x):
         # x - is an input signal
         return torch.stft(
             # make a full and correct function call
-            # <YOUR CODE GOES HERE>
+            input=x,
+            n_fft=self.n_fft, 
+            hop_length=self.hop_length,
+            win_length=self.window_length,
+            window=self.window,
+            center=self.center,
+            pad_mode=self.pad_mode,
+            normalized=self.normalize_stft,
+            onesided=self.onesided,
+            return_complex=self.return_complex
         )
 
     def forward(self, x):
@@ -65,6 +90,9 @@ class LogMelFilterBanks(nn.Module):
             Torch.Tensor: Tensor of log mel filterbanks of dimension (batch, n_mels, n_frames),
                 where n_frames is a function of the window_length, hop_length and length of audio
         """
-        # <YOUR CODE GOES HERE>
-        # Return log mel filterbanks matrix
-        return
+        stft_result = self.spectrogram(x)
+        power_spect = torch.abs(stft_result) ** self.power
+        power_spect = power_spect.transpose(1, 2)
+        emel = torch.matmul(power_spect, self.mel_fbanks)
+        result = torch.log(emel + 1e-6).transpose(1, 2)
+        return result
