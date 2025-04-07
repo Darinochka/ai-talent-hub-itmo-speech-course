@@ -48,8 +48,18 @@ class Wav2Vec2Decoder:
         Returns:
             str: Decoded transcript
         """
-        # <YOUR CODE GOES HERE>
-        return
+        log_probs = torch.log_softmax(logits, dim=-1)
+        best_path = torch.argmax(log_probs, dim=-1)
+        
+        result = []
+        prev_token = None
+        
+        for token in best_path:
+            if token != prev_token and token != self.blank_token_id:
+                result.append(self.vocab[token.item()])
+            prev_token = token
+            
+        return "".join(result)
 
     def beam_search_decode(self, logits: torch.Tensor, return_beams: bool = False):
         """
@@ -67,7 +77,24 @@ class Wav2Vec2Decoder:
                 (List[Tuple[List[int], float]]) - If return_beams is True, returns a list of tuples
                     containing hypotheses and log probabilities.
         """
-        # <YOUR CODE GOES HERE>
+        log_probs = torch.log_softmax(logits, dim=-1)
+        T, V = log_probs.shape
+        
+        beams = [([], 0.0)]
+        
+        for t in range(T):
+            new_beams = []
+            for hyp, score in beams:
+                for v in range(V):
+                    if v == self.blank_token_id:
+                        new_beams.append((hyp, score + log_probs[t, v].item()))
+                    elif not hyp or v != hyp[-1]:
+                        new_beams.append((hyp + [v], score + log_probs[t, v].item()))
+            
+            beams = sorted(new_beams, key=lambda x: x[1], reverse=True)[:self.beam_width]
+        
+        best_hypothesis = "".join(self.vocab[token] for token in beams[0][0])
+        
         if return_beams:
             return beams
         else:
@@ -88,8 +115,26 @@ class Wav2Vec2Decoder:
         if not self.lm_model:
             raise ValueError("KenLM model required for LM shallow fusion")
         
-        # <YOUR CODE GOES HERE>
-        return
+        log_probs = torch.log_softmax(logits, dim=-1)
+        T, V = log_probs.shape
+        
+        beams = [("", 0.0)]
+        
+        for t in range(T):
+            new_beams = []
+            for hyp, score in beams:
+                for v in range(V):
+                    if v == self.blank_token_id:
+                        new_beams.append((hyp, score + log_probs[t, v].item()))
+                    elif not hyp or v != hyp[-1]:
+                        new_hyp = hyp + self.vocab[v]
+                        lm_score = self.lm_model.score(new_hyp)
+                        new_score = score + log_probs[t, v].item() + self.alpha * lm_score + self.beta * (len(new_hyp.split()) - len(hyp.split()))
+                        new_beams.append((new_hyp, new_score))
+            
+            beams = sorted(new_beams, key=lambda x: x[1], reverse=True)[:self.beam_width]
+        
+        return beams[0][0]
 
     def lm_rescore(self, beams: List[Tuple[List[int], float]]) -> str:
         """
@@ -103,8 +148,15 @@ class Wav2Vec2Decoder:
         """
         if not self.lm_model:
             raise ValueError("KenLM model required for LM rescoring")
-        # <YOUR CODE GOES HERE>
-        return
+            
+        rescored_beams = []
+        for hyp, score in beams:
+            text = "".join(self.vocab[token] for token in hyp)
+            lm_score = self.lm_model.score(text)
+            new_score = score + self.alpha * lm_score
+            rescored_beams.append((text, new_score))
+            
+        return max(rescored_beams, key=lambda x: x[1])[0]
 
     def decode(self, audio_input: torch.Tensor, method: str = "greedy") -> str:
         """
@@ -145,17 +197,17 @@ def test(decoder, audio_path, true_transcription):
     audio_input, sr = torchaudio.load(audio_path)
     assert sr == 16000, "Audio sample rate must be 16kHz"
 
-    print("=" * 60)
-    print("Target transcription")
-    print(true_transcription)
-
-    # Print all decoding methods results
+    results = {}
+    
     for d_strategy in ["greedy", "beam", "beam_lm", "beam_lm_rescore"]:
-        print("-" * 60)
-        print(f"{d_strategy} decoding") 
         transcript = decoder.decode(audio_input, method=d_strategy)
-        print(f"{transcript}")
-        print(f"Character-level Levenshtein distance: {Levenshtein.distance(true_transcription, transcript.strip())}")
+        levenshtein_distance = Levenshtein.distance(true_transcription, transcript.strip())
+        results[d_strategy] = {
+            "transcript": transcript,
+            "levenshtein_distance": levenshtein_distance
+        }
+    
+    return results
 
 
 if __name__ == "__main__":
@@ -172,5 +224,17 @@ if __name__ == "__main__":
     ]
 
     decoder = Wav2Vec2Decoder()
-
-    _ = [test(decoder, audio_path, target) for audio_path, target in test_samples]
+    
+    for audio_path, target in test_samples:
+        print("=" * 60)
+        print(f"Testing file: {audio_path}")
+        print("Target transcription:")
+        print(target)
+        
+        results = test(decoder, audio_path, target)
+        
+        for method, data in results.items():
+            print("-" * 60)
+            print(f"{method} decoding")
+            print(f"Transcript: {data['transcript']}")
+            print(f"Character-level Levenshtein distance: {data['levenshtein_distance']}")
