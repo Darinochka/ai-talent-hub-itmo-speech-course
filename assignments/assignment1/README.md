@@ -37,7 +37,7 @@ Implement a PyTorch layer (inherit a class from `torch.nn.Module`) for extractio
 
 ---
 
-Train a simple CNN model with `LogMelFilterBanks` features for a binary classification problem with [**PyTorch**](https://pytorch.org/) on [Google Speech Commands](https://arxiv.org/abs/1804.03209) data. **[20 pts]**
+Train a simple CNN model (no more than 100K parameters) with `LogMelFilterBanks` features for a binary classification problem with [**PyTorch**](https://pytorch.org/) on [Google Speech Commands](https://arxiv.org/abs/1804.03209) data. **[20 pts]**
 
 
 2. Set-up training pipeline:

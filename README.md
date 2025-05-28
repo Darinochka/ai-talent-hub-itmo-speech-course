@@ -6,12 +6,12 @@
 
 ## Course structure
 
-- 10+ lectures
-- 2 [personal assignments](assignments/README.md) [50 pts]
-- 2 group projects [50 pts]
-- 1 seminar [10 pts]
+- [10+ lectures](lectures/README.md)
+- [2 personal assignments](assignments/README.md) [50 pts]
+- [2 group projects](group-projects/README.md) [50 pts]
+- 1 research seminar [10 pts]
 
-All courseworks deadlines ara provided within their descriptions.
+All courseworks deadlines are provided within their corresponding descriptions
 
 
 ## Syllabus
@@ -20,9 +20,9 @@ This is a new course that is given for the first time, so the syllabus is subjec
 slight modifications during the course.
 
 1. [Basics of Digital Signal Processing](lectures/week1)
-2. Classic ASR and metrics
-3. End-to-End ASR with CTC
-4. ASR decoding: WFST, Beam Search, RNN-T and LM rescoring
+2. [Classic ASR and metrics](lectures/week2)
+3. [End-to-End ASR with CTC and audio augmentations](lectures/week3/README.md)
+4. Encoder-Decoder End-to-End ASR and decoding with LM
 5. Self-supervised speech representations
 6. SSL-finetuned ASR and Whisper
 7. Text-to-Speech systems
