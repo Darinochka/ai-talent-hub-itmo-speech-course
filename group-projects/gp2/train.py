@@ -9,13 +9,21 @@ import os
 from models import Generator, Discriminator
 from t2spec_converter import TextToSpecConverter
 import torch.multiprocessing as mp
+import threading
 
 mp.set_start_method('spawn', force=True)
 
+t2s_local = threading.local()
+
+def worker_init_fn(worker_id):
+    t2s_local.t2s = TextToSpecConverter()
+
 class VocoderDataset(torch.utils.data.Dataset):
-    def __init__(self, root_dir, sample_rate=22050):
+    def __init__(self, root_dir, sample_rate=22050, max_frames=1000, max_samples=22050*5):
         self.dataset = torchaudio.datasets.LJSPEECH(root=root_dir, download=True)
         self.sample_rate = sample_rate
+        self.max_frames = max_frames
+        self.max_samples = max_samples
         
     def __len__(self):
         return len(self.dataset)
@@ -25,15 +33,42 @@ class VocoderDataset(torch.utils.data.Dataset):
         if sample_rate != self.sample_rate:
             waveform = torchaudio.transforms.Resample(sample_rate, self.sample_rate)(waveform)
         
-        t2s = TextToSpecConverter()
+        t2s = getattr(t2s_local, 't2s', None)
+        if t2s is None:
+            raise RuntimeError("TextToSpecConverter not initialized in worker")
         mel_spec = t2s.text2spec(text)
         mel_spec = torch.FloatTensor(mel_spec)
         
+        T, C = mel_spec.shape
+        if T > self.max_frames:
+            mel_spec = mel_spec[:self.max_frames, :]
+        elif T < self.max_frames:
+            pad_amount = self.max_frames - T
+            mel_spec = torch.nn.functional.pad(mel_spec, (0, 0, 0, pad_amount))
+        
+        waveform = waveform.squeeze()
+        T = waveform.shape[0]
+        if T > self.max_samples:
+            waveform = waveform[:self.max_samples]
+        elif T < self.max_samples:
+            waveform = torch.nn.functional.pad(waveform, (0, self.max_samples - T))
+        
         return {
-            'waveform': waveform.squeeze(),
+            'waveform': waveform,
             'mel_spec': mel_spec,
             'text': text
         }
+
+def custom_collate_fn(batch):
+    waveforms = torch.stack([item['waveform'] for item in batch])
+    mel_specs = torch.stack([item['mel_spec'] for item in batch])
+    texts = [item['text'] for item in batch]
+    
+    return {
+        'waveform': waveforms,
+        'mel_spec': mel_specs,
+        'text': texts
+    }
 
 def feature_loss(fmap_r, fmap_g):
     loss = 0
@@ -63,23 +98,35 @@ def train(args):
     d_optimizer = optim.AdamW(discriminator.parameters(), lr=args.learning_rate, betas=(0.8, 0.99))
     
     dataset = VocoderDataset(args.data_dir)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=1, 
-                          persistent_workers=False, prefetch_factor=None)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=1,
+        persistent_workers=False,
+        prefetch_factor=None,
+        collate_fn=custom_collate_fn,
+        worker_init_fn=worker_init_fn
+    )
     
     for epoch in range(args.epochs):
         generator.train()
         discriminator.train()
         
         pbar = tqdm(dataloader, desc=f'Epoch {epoch+1}/{args.epochs}')
+        
         for batch in pbar:
-            mel_spec = batch['mel_spec'].to(device)
+            mel_spec = batch['mel_spec'].transpose(1, 2).to(device)
             waveform = batch['waveform'].to(device)
             
             d_optimizer.zero_grad()
             
             fake_audio = generator(mel_spec)
+            fake_audio = fake_audio[:, :, :waveform.size(1)]
             
             real_pred, real_features = discriminator(waveform.unsqueeze(1))
+            real_features = [f.detach() for f in real_features]
+            
             fake_pred, fake_features = discriminator(fake_audio.detach())
             
             d_loss_real = torch.mean((real_pred - 1) ** 2)
@@ -130,7 +177,6 @@ def train(args):
             
             wandb.save(checkpoint_path)
     
-    
     wandb.finish()
 
 if __name__ == '__main__':
@@ -150,4 +196,4 @@ if __name__ == '__main__':
     os.makedirs(args.data_dir, exist_ok=True)
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     
-    train(args) 
+    train(args)
