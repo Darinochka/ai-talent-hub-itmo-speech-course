@@ -83,7 +83,8 @@ def train(args):
     wandb.init(
         project="neural-vocoder",
         config={
-            "learning_rate": args.learning_rate,
+            "g_learning_rate": args.g_learning_rate,
+            "d_learning_rate": args.d_learning_rate,
             "batch_size": args.batch_size,
             "epochs": args.epochs,
             "lambda_feat": args.lambda_feat,
@@ -94,8 +95,8 @@ def train(args):
     generator = Generator().to(device)
     discriminator = Discriminator().to(device)
     
-    g_optimizer = optim.AdamW(generator.parameters(), lr=args.learning_rate, betas=(0.8, 0.99))
-    d_optimizer = optim.AdamW(discriminator.parameters(), lr=args.learning_rate, betas=(0.8, 0.99))
+    g_optimizer = optim.AdamW(generator.parameters(), lr=args.g_learning_rate, betas=(0.8, 0.99))
+    d_optimizer = optim.AdamW(discriminator.parameters(), lr=args.d_learning_rate, betas=(0.8, 0.99))
     
     dataset = VocoderDataset(args.data_dir)
     dataloader = DataLoader(
@@ -165,17 +166,16 @@ def train(args):
                 'step': step
             })
         
-        if (epoch + 1) % args.save_interval == 0:
-            checkpoint_path = os.path.join(args.checkpoint_dir, f'checkpoint_{epoch+1}.pt')
-            torch.save({
-                'generator': generator.state_dict(),
-                'discriminator': discriminator.state_dict(),
-                'g_optimizer': g_optimizer.state_dict(),
-                'd_optimizer': d_optimizer.state_dict(),
-                'epoch': epoch
-            }, checkpoint_path)
-            
-            wandb.save(checkpoint_path)
+        checkpoint_path = os.path.join(args.checkpoint_dir, f'checkpoint_{epoch+1}.pt')
+        torch.save({
+            'generator': generator.state_dict(),
+            'discriminator': discriminator.state_dict(),
+            'g_optimizer': g_optimizer.state_dict(),
+            'd_optimizer': d_optimizer.state_dict(),
+            'epoch': epoch
+        }, checkpoint_path)
+        
+        wandb.save(checkpoint_path)
     
     wandb.finish()
 
@@ -185,7 +185,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str, default='data', help='Path to LJSpeech dataset')
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints', help='Path to save model checkpoints')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
-    parser.add_argument('--learning_rate', type=float, default=2e-4, help='Learning rate')
+    parser.add_argument('--g_learning_rate', type=float, default=2e-4, help='Generator learning rate')
+    parser.add_argument('--d_learning_rate', type=float, default=2e-4, help='Discriminator learning rate')
     parser.add_argument('--epochs', type=int, default=1000, help='Number of epochs')
     parser.add_argument('--save_interval', type=int, default=10, help='Save interval in epochs')
     parser.add_argument('--lambda_feat', type=float, default=2.0, help='Feature matching loss weight')

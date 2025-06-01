@@ -13,9 +13,14 @@ def generate_audio(text, model_path, output_dir, device='cuda'):
     t2s = TextToSpecConverter()
     mel_spec = t2s.text2spec(text)
     mel_spec = torch.FloatTensor(mel_spec).unsqueeze(0).to(device)
+    mel_spec = mel_spec.transpose(1, 2)
     
     with torch.no_grad():
         audio = generator(mel_spec)
+    
+    audio = audio.squeeze(0)
+    if audio.dim() == 2 and audio.shape[0] > 1:
+        audio = audio[0:1, :]
     
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"{text[:30].replace(' ', '_')}.wav")
@@ -45,4 +50,4 @@ def main():
         print(f"Saved to {output_path}")
 
 if __name__ == '__main__':
-    main() 
+    main()
